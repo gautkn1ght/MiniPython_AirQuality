@@ -1,0 +1,11 @@
+[project]
+name = "minipython-airquality"
+version = "1.0.0"
+description = "A small page showcasing the diagram of air quality"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dash>=4.3.0",
+    "pandas>=3.0.3",
+    "plotly>=6.8.0",
+]

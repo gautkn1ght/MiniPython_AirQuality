@@ -1,75 +1,47 @@
 import sqlite3
 import pandas as pd
-import io
-import os
+from config import DB_PATH
 
-DB_PATH = "data/db.sqlite"
-CLEANED_DIR = "data/cleaned"
+def clean_data():
 
-COORDINATES_MAP = {
-    "Metz-Centre": (49.1193, 6.1757),
-    "Baume-les-Dames": (47.3509, 6.3614),
-    "Besançon": (47.2378, 6.0244),
-    "Dijon": (47.3220, 5.0415),
-    "Nancy": (48.6921, 6.1844),
-    "Strasbourg": (48.5734, 7.7521),
-    "Besançon-Châteaufarine": (47.2255, 5.9433),
-    "Dijon-Champmaillot": (47.3262, 5.0645),
-    "Metz-Borny": (49.1147, 6.2201),
-    "Strasbourg-Clemenceau": (48.5912, 7.7478),
-    "Nancy-Centre": (48.6900, 6.1800)
-}
+    connexion = sqlite3.connect(DB_PATH)
 
-def clean_and_store_data():
-    print("INFO : Nettoyage et structuration des données CSV...")
+    query = """
+        SELECT 
+            r."Date de début" as date_debut,
+            r."nom site" as nom_site,
+            r."code site" as code_site,
+            r."Polluant" as polluant,
+            r."valeur" as valeur,
+            r."unité de mesure" as unite,
+            s.Latitude as latitude,
+            s.Longitude as longitude
+        FROM raw r
+        INNER JOIN stations s ON r."code site" = s.Code
+    """
 
-    os.makedirs(CLEANED_DIR, exist_ok=True)
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute("SELECT json_payload FROM raw ORDER BY fetched_at DESC LIMIT 1")
-        csv_data = cursor.fetchone()[0]
-    except sqlite3.OperationalError:
-        print("ERREUR : La table 'raw' n'existe pas. Éxecuter get_data.py.")
-        conn.close()
+    print("INFO : Fusion des mesures et coordonnées")
+    database_cleaned = pd.read_sql_query(query, connexion)
+
+    if database_cleaned.empty:
+        print("ERREUR : La table 'raw' est vide.")
+        connexion.close()
         return
 
-    if not csv_data:
-        print("ERREUR : Aucun enregistrement trouvé.")
-        conn.close()
-        return
+    database_cleaned = database_cleaned.dropna(subset=["valeur", "latitude", "longitude"])
 
-    # Convertir le texte brut CSV en DataFrame Pandas
-    df = pd.read_csv(io.StringIO(csv_data), sep=";")
+    database_cleaned["valeur"] = pd.to_numeric(database_cleaned["valeur"], errors="coerce")
     
-    # Sélection des colonnes
-    df_cleaned = df[[
-        'nom site', 'Polluant', 'valeur brute', 'unité de mesure', 'Date de début', 'Date de fin' ]].dropna()
-    
-    # Renommer les colonnes
-    df_cleaned = df_cleaned.rename(columns={
-        'nom site': 'station_name',
-        'Polluant': 'parameter',
-        'valeur brute' : 'value',
-        'unité de mesure' : 'unit',
-        'Date de début' : 'dateDébut',
-        'Date de fin': 'dateFin'
-    })
-    
-    df_cleaned['latitude'] = df_cleaned['station_name'].apply(lambda x: COORDINATES_MAP.get(x, (47.0, 6.0))[0])
-    df_cleaned['longitude'] = df_cleaned['station_name'].apply(lambda x: COORDINATES_MAP.get(x, (47.0, 6.0))[1])
+    database_cleaned["date_debut"] = pd.to_datetime(database_cleaned["date_debut"], errors="coerce")
 
-    df_cleaned['station_id'] = df_cleaned['station_name'].astype('category').cat.codes
+    database_cleaned = database_cleaned.dropna(subset=["valeur", "date_debut"])
 
-    df_cleaned.to_sql("cleaned", conn, if_exists="replace", index=False)
-    conn.close()
-    print("RÉUSSITE : Données insérées dans la table 'cleaned'. (SQLite)")
-    
-    csv_cleaned_path = os.path.join(CLEANED_DIR, "cleaned_concentration-de-polluants-atmosphérique-reglementes.csv")
-    df_cleaned.to_csv(csv_cleaned_path, index=False)
-    print(f"RÉUSSITE : Copie CSV propre sauvegardée dans : {csv_cleaned_path}")
+    print("INFO : Sauvegarde dans la table 'cleaned'")
+    database_cleaned.to_sql("cleaned", connexion, if_exists="replace", index=False)
+
+    connexion.close()
+    print("RÉUSSITE : Nettoyage terminé et base de données mise à jour !")
+
 
 if __name__ == "__main__":
-    clean_and_store_data()
+    clean_data()

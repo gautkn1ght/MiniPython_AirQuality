@@ -1,42 +1,24 @@
 import os
-import shutil
 import sqlite3
 import pandas as pd
+from config import DB_PATH, CSV_MESURES, CSV_STATIONS
 
-CSV_SOURCE = "csv/FR_E2_2026-01-01.csv"
-DB_PATH = "data/db.sqlite"
-RAW_DIR = "data/raw"
+def raw_data():
 
-def get_raw_data():
-    print("INFO : Récupération des données")
-    
-    if not os.path.exists(CSV_SOURCE):
-        print(f"ERREUR : Le fichier {CSV_SOURCE} est introuvable.")
-        return
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-    os.makedirs(RAW_DIR, exist_ok=True)
-    raw_dest = os.path.join(RAW_DIR, "raw_concentration-de-polluants-atmosphérique-reglementes.csv")
-    shutil.copyfile(CSV_SOURCE, raw_dest)
-    print(f"RÉUSSITE : Fichier brut copié dans : {raw_dest}")
+    connexion = sqlite3.connect(DB_PATH)
 
-    with open(CSV_SOURCE, "r", encoding="utf-8") as f:
-        csv_content = f.read()
+    print(f"INFO : Insertion de {CSV_MESURES} dans la table 'raw'")
+    database_mesures = pd.read_csv(CSV_MESURES, sep=";", low_memory=False)
+    database_mesures.to_sql("raw", connexion, if_exists="replace", index=False)
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS raw (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            json_payload TEXT,
-            fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    cursor.execute("INSERT INTO raw (json_payload) VALUES (?)", (csv_content,))
-    conn.commit()
-    conn.close()
-    print("RÉUSSITE : Données brutes insérées dans la table 'raw'. (db.sqlite)")
+    print(f"INFO : Insertion de {CSV_STATIONS} dans la table 'stations'")
+    database_stations = pd.read_csv(CSV_STATIONS, sep=";", low_memory=False)
+    database_stations.to_sql("stations", connexion, if_exists="replace", index=False)
+
+    connexion.close()
+    print("SUCCESS : terminée avec succès !")
 
 if __name__ == "__main__":
-    get_raw_data()
+    raw_data()

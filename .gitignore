@@ -1,4 +1,6 @@
 .venv
 uv.lock
+__pycache__/
+.vscode/
+.github/
 .python-version
-pyproject.toml
